@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speech Service ASR Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f5f7fa;
+        color: #16202a;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 20px 44px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      p {
+        margin: 0;
+        color: #5a6875;
+        line-height: 1.45;
+      }
+
+      button {
+        border: 1px solid #b9c2cc;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #16202a;
+        min-height: 40px;
+        padding: 0 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: #155eef;
+        background: #155eef;
+        color: #ffffff;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: #e7ecf2;
+        color: #344252;
+        font-size: 13px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
+        gap: 16px;
+      }
+
+      section {
+        background: #ffffff;
+        border: 1px solid #d9e0e8;
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+
+      .transcript {
+        min-height: 240px;
+        white-space: pre-wrap;
+        font-size: 22px;
+        line-height: 1.5;
+      }
+
+      .partial {
+        color: #687789;
+      }
+
+      .final {
+        color: #121820;
+      }
+
+      .events {
+        height: 300px;
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid #e0e5eb;
+        border-radius: 6px;
+        background: #fbfcfd;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        color: #475569;
+        font-size: 13px;
+      }
+
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 38px;
+        border: 1px solid #c9d2dc;
+        border-radius: 6px;
+        padding: 0 10px;
+        font-size: 14px;
+      }
+
+      .field {
+        margin-bottom: 14px;
+      }
+
+      @media (max-width: 760px) {
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .toolbar button {
+          flex: 1 1 120px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Speech Service ASR Test</h1>
+          <p>브라우저 마이크 또는 오디오 파일을 16 kHz PCM16 mono 청크로 전송합니다.</p>
+        </div>
+        <div class="toolbar">
+          <button id="startBtn" class="primary">Start</button>
+          <button id="stopBtn" disabled>Stop</button>
+          <span id="status" class="status">idle</span>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section>
+          <h2>Transcript</h2>
+          <div id="transcript" class="transcript"></div>
+        </section>
+        <section>
+          <div class="field">
+            <label for="wsUrl">WebSocket URL</label>
+            <input id="wsUrl" value="" />
+          </div>
+          <div class="field">
+            <label for="audioFile">Audio File</label>
+            <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg,.webm" />
+          </div>
+          <div class="toolbar">
+            <button id="sendFileBtn">Send File</button>
+          </div>
+          <h2>Events</h2>
+          <div id="events" class="events"></div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const TARGET_SAMPLE_RATE = 16000;
+      const FRAME_MS = 20;
+      const FRAME_SAMPLES = TARGET_SAMPLE_RATE * FRAME_MS / 1000;
+
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const statusEl = document.getElementById("status");
+      const transcriptEl = document.getElementById("transcript");
+      const eventsEl = document.getElementById("events");
+      const wsUrlEl = document.getElementById("wsUrl");
+      const audioFileEl = document.getElementById("audioFile");
+      const sendFileBtn = document.getElementById("sendFileBtn");
+
+      let ws = null;
+      let audioContext = null;
+      let source = null;
+      let processor = null;
+      let stream = null;
+      let pcmBuffer = [];
+      let finalLines = [];
+      let partialText = "";
+      let sendingFile = false;
+
+      wsUrlEl.value = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/v1/asr/stream`;
+
+      function setStatus(value) {
+        statusEl.textContent = value;
+      }
+
+      function appendEvent(event) {
+        const line = document.createElement("div");
+        line.textContent = JSON.stringify(event);
+        eventsEl.appendChild(line);
+        eventsEl.scrollTop = eventsEl.scrollHeight;
+      }
+
+      function renderTranscript() {
+        transcriptEl.innerHTML = "";
+        for (const text of finalLines) {
+          const div = document.createElement("div");
+          div.className = "final";
+          div.textContent = text;
+          transcriptEl.appendChild(div);
+        }
+        if (partialText) {
+          const div = document.createElement("div");
+          div.className = "partial";
+          div.textContent = partialText;
+          transcriptEl.appendChild(div);
+        }
+      }
+
+      function resetOutput() {
+        finalLines = [];
+        partialText = "";
+        eventsEl.innerHTML = "";
+        renderTranscript();
+      }
+
+      function handleServerMessage(message) {
+        const event = JSON.parse(message.data);
+        appendEvent(event);
+        if (event.type === "partial") {
+          partialText = event.text || "";
+          renderTranscript();
+        }
+        if (event.type === "final") {
+          partialText = "";
+          if (event.text) {
+            finalLines.push(event.text);
+          }
+          renderTranscript();
+        }
+        if (event.type === "speech_start") {
+          partialText = "";
+          renderTranscript();
+        }
+      }
+
+      function openSocket() {
+        return new Promise((resolve, reject) => {
+          ws = new WebSocket(wsUrlEl.value);
+          ws.binaryType = "arraybuffer";
+          ws.onmessage = handleServerMessage;
+          ws.onerror = () => {
+            reject(new Error("websocket error"));
+          };
+          ws.onopen = () => {
+            resolve(ws);
+          };
+        });
+      }
+
+      function downsampleTo16k(input, inputSampleRate) {
+        if (inputSampleRate === TARGET_SAMPLE_RATE) {
+          return input;
+        }
+        const ratio = inputSampleRate / TARGET_SAMPLE_RATE;
+        const outputLength = Math.floor(input.length / ratio);
+        const output = new Float32Array(outputLength);
+        for (let i = 0; i < outputLength; i += 1) {
+          const start = Math.floor(i * ratio);
+          const end = Math.min(Math.floor((i + 1) * ratio), input.length);
+          let sum = 0;
+          for (let j = start; j < end; j += 1) {
+            sum += input[j];
+          }
+          output[i] = sum / Math.max(1, end - start);
+        }
+        return output;
+      }
+
+      function floatToPcm16(samples) {
+        const buffer = new ArrayBuffer(samples.length * 2);
+        const view = new DataView(buffer);
+        for (let i = 0; i < samples.length; i += 1) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        return buffer;
+      }
+
+      function sendAudio(input) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        const downsampled = downsampleTo16k(input, audioContext.sampleRate);
+        for (let i = 0; i < downsampled.length; i += 1) {
+          pcmBuffer.push(downsampled[i]);
+        }
+        while (pcmBuffer.length >= FRAME_SAMPLES) {
+          const frame = pcmBuffer.splice(0, FRAME_SAMPLES);
+          ws.send(floatToPcm16(frame));
+        }
+      }
+
+      async function start() {
+        startBtn.disabled = true;
+        sendFileBtn.disabled = true;
+        setStatus("connecting");
+        resetOutput();
+
+        await openSocket();
+        setStatus("recording");
+        stopBtn.disabled = false;
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        audioContext = new AudioContext();
+        source = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (event) => {
+          sendAudio(event.inputBuffer.getChannelData(0));
+        };
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        ws.onclose = () => {
+          setStatus("closed");
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          sendFileBtn.disabled = false;
+        };
+      }
+
+      async function stop() {
+        stopBtn.disabled = true;
+        setStatus("stopping");
+        if (processor) {
+          processor.disconnect();
+          processor.onaudioprocess = null;
+        }
+        if (source) {
+          source.disconnect();
+        }
+        if (stream) {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+        }
+        if (audioContext) {
+          await audioContext.close();
+        }
+        processor = null;
+        source = null;
+        stream = null;
+        audioContext = null;
+        pcmBuffer = [];
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "end" }));
+        }
+      }
+
+      function audioBufferToMono(buffer) {
+        const output = new Float32Array(buffer.length);
+        for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+          const input = buffer.getChannelData(channel);
+          for (let i = 0; i < input.length; i += 1) {
+            output[i] += input[i] / buffer.numberOfChannels;
+          }
+        }
+        return output;
+      }
+
+      async function sendFile() {
+        const file = audioFileEl.files[0];
+        if (!file) {
+          appendEvent({ type: "error", message: "select an audio file first" });
+          return;
+        }
+
+        sendingFile = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        sendFileBtn.disabled = true;
+        setStatus("decoding file");
+        resetOutput();
+
+        const decodeContext = new AudioContext();
+        try {
+          const data = await file.arrayBuffer();
+          const decoded = await decodeContext.decodeAudioData(data);
+          const mono = audioBufferToMono(decoded);
+          const downsampled = downsampleTo16k(mono, decoded.sampleRate);
+
+          setStatus("connecting");
+          await openSocket();
+          setStatus("sending file");
+
+          for (let offset = 0; offset < downsampled.length; offset += FRAME_SAMPLES) {
+            if (!sendingFile) {
+              break;
+            }
+            const frame = downsampled.slice(offset, Math.min(offset + FRAME_SAMPLES, downsampled.length));
+            ws.send(floatToPcm16(frame));
+            await new Promise((resolve) => setTimeout(resolve, FRAME_MS));
+          }
+
+          const silenceFrame = new Float32Array(FRAME_SAMPLES);
+          for (let i = 0; i < 50 && sendingFile; i += 1) {
+            ws.send(floatToPcm16(silenceFrame));
+            await new Promise((resolve) => setTimeout(resolve, FRAME_MS));
+          }
+
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "end" }));
+          }
+          setStatus("waiting final");
+          ws.onclose = () => {
+            setStatus("closed");
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            sendFileBtn.disabled = false;
+            sendingFile = false;
+          };
+        } finally {
+          await decodeContext.close();
+        }
+      }
+
+      startBtn.addEventListener("click", () => {
+        start().catch((error) => {
+          appendEvent({ type: "error", message: error.message });
+          setStatus("error");
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          sendFileBtn.disabled = false;
+        });
+      });
+      stopBtn.addEventListener("click", () => {
+        sendingFile = false;
+        stop().catch((error) => {
+          appendEvent({ type: "error", message: error.message });
+          setStatus("error");
+        });
+      });
+      sendFileBtn.addEventListener("click", () => {
+        sendFile().catch((error) => {
+          appendEvent({ type: "error", message: error.message });
+          setStatus("error");
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          sendFileBtn.disabled = false;
+          sendingFile = false;
+        });
+      });
+    </script>
+  </body>
+</html>

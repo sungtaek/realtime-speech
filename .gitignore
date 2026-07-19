@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs and local config
+*.log
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ASR/model caches and generated artifacts
+*.nemo
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.bin
+*.safetensors
+*.ct2
+model.bin
+models/
+checkpoints/
+
+# Local audio samples. Keep the README with download instructions.
+samples/*
+!samples/README.md
+

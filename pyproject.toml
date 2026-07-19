@@ -1,0 +1,31 @@
+[project]
+name = "nemo-streaming-asr-service"
+version = "0.1.0"
+description = "FastAPI speech service with streaming ASR and planned TTS support."
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "websockets>=12.0",
+  "numpy>=1.24.0",
+  "pydantic-settings>=2.3.0",
+  "webrtcvad-wheels>=2.0.14",
+  "Cython>=3.0.0",
+  "packaging>=23.0",
+  "torch>=2.2.0",
+  "faster-whisper>=1.1.0",
+  "nemo-toolkit[asr] @ git+https://github.com/NVIDIA/NeMo.git@main",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["asr_service*"]
