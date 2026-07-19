@@ -1,23 +1,17 @@
-from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ASR_", extra="ignore")
-
-    engine: Literal["nemo", "whisper"] = "nemo"
-    nemo_model_name: str = "nvidia/parakeet-tdt-0.6b-v2"
+class Settings(BaseModel):
+    engine: Literal["nemo", "whisper"] = "whisper"
+    nemo_model_name: str = "eesungkim/stt_kr_conformer_transducer_large"
     nemo_model_path: str | None = None
     device: str = "cuda"
     target_lang: str | None = None
     nemo_strip_lang_tags: bool = True
     whisper_model: str = "large-v3"
     whisper_partial_model: str = "small"
-    whisper_compute_type: str = "float16"
-    whisper_partial_compute_type: str | None = None
     whisper_beam_size: int = Field(default=5, ge=1)
     whisper_partial_beam_size: int = Field(default=1, ge=1)
     whisper_no_speech_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -34,6 +28,13 @@ class Settings(BaseSettings):
     stream_min_partial_ms: int = Field(default=600, ge=100)
 
 
-@lru_cache
+_settings: Settings | None = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    return _settings or Settings()
+
+
+def set_settings(settings: Settings) -> None:
+    global _settings
+    _settings = settings

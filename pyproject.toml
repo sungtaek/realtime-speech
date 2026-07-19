@@ -8,7 +8,6 @@ dependencies = [
   "uvicorn[standard]>=0.30.0",
   "websockets>=12.0",
   "numpy>=1.24.0",
-  "pydantic-settings>=2.3.0",
   "webrtcvad-wheels>=2.0.14",
   "Cython>=3.0.0",
   "packaging>=23.0",
@@ -22,6 +21,9 @@ test = [
   "pytest>=8.0.0",
   "pytest-asyncio>=0.23.0",
 ]
+
+[project.scripts]
+run-asr = "asr_service.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

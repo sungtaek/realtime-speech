@@ -87,8 +87,6 @@ class FasterWhisperAsrEngine:
     partial_model_name: str
     device: str
     language: str | None = None
-    compute_type: str = "float16"
-    partial_compute_type: str | None = None
     beam_size: int = 5
     partial_beam_size: int = 1
     no_speech_threshold: float = 0.6
@@ -97,8 +95,8 @@ class FasterWhisperAsrEngine:
     def __post_init__(self) -> None:
         self._final_device = self.device
         self._partial_device = self.device
-        self._final_compute_type = self.compute_type
-        self._partial_compute_type = self.partial_compute_type or self.compute_type
+        self._final_compute_type = ""
+        self._partial_compute_type = ""
         self.final_model = self._load_model(self.model_name, final=True)
         self.partial_model = (
             self.final_model
@@ -110,7 +108,6 @@ class FasterWhisperAsrEngine:
         from faster_whisper import WhisperModel
 
         device = self._final_device if final else self._partial_device
-        compute_type = self._final_compute_type if final else self._partial_compute_type
 
         if device == "cuda":
             try:
@@ -121,8 +118,7 @@ class FasterWhisperAsrEngine:
             except ImportError:
                 device = "cpu"
 
-        if device == "cpu" and compute_type in {"float16", "bfloat16"}:
-            compute_type = "int8"
+        compute_type = _whisper_compute_type_for_device(device)
 
         if final:
             self._final_device = device
@@ -163,12 +159,10 @@ class FasterWhisperAsrEngine:
                 raise
             if final:
                 self._final_device = "cpu"
-                self._final_compute_type = "int8"
                 self.final_model = self._load_model(self.model_name, final=True)
                 model = self.final_model
             else:
                 self._partial_device = "cpu"
-                self._partial_compute_type = "int8"
                 self.partial_model = self._load_model(self.partial_model_name, final=False)
                 model = self.partial_model
             segments, _info = model.transcribe(
@@ -206,6 +200,10 @@ def _is_cuda_library_error(exc: RuntimeError) -> bool:
     return "libcublas" in message or "libcudnn" in message or ("cuda" in message and "not found" in message)
 
 
+def _whisper_compute_type_for_device(device: str) -> str:
+    return "float16" if device == "cuda" else "int8"
+
+
 def create_asr_engine(settings: Settings) -> AsrEngine:
     if settings.engine == "nemo":
         return NemoAsrEngine(
@@ -222,8 +220,6 @@ def create_asr_engine(settings: Settings) -> AsrEngine:
             partial_model_name=settings.whisper_partial_model,
             device=settings.device,
             language=settings.target_lang,
-            compute_type=settings.whisper_compute_type,
-            partial_compute_type=settings.whisper_partial_compute_type,
             beam_size=settings.whisper_beam_size,
             partial_beam_size=settings.whisper_partial_beam_size,
             no_speech_threshold=settings.whisper_no_speech_threshold,
