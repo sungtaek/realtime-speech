@@ -18,16 +18,16 @@ def create_session(asr: AsrEngine, settings: Settings) -> StreamingAsrSession:
         sample_rate=settings.sample_rate,
         frame_ms=settings.vad_frame_ms,
         aggressiveness=settings.vad_aggressiveness,
-        start_trigger_ms=settings.start_trigger_ms,
-        end_silence_ms=settings.end_silence_ms,
-        preroll_ms=settings.preroll_ms,
-        max_utterance_ms=settings.max_utterance_ms,
+        start_trigger_ms=settings.vad_start_trigger_ms,
+        end_silence_ms=settings.vad_end_silence_ms,
+        preroll_ms=settings.vad_preroll_ms,
+        max_utterance_ms=settings.vad_max_utterance_ms,
     )
     return StreamingAsrSession(
         asr=asr,
         vad=UtteranceVad(vad_config),
-        partial_interval_ms=settings.partial_interval_ms,
-        min_partial_ms=settings.min_partial_ms,
+        partial_interval_ms=settings.stream_partial_interval_ms,
+        min_partial_ms=settings.stream_min_partial_ms,
     )
 
 
@@ -46,7 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "web"
 @app.get("/health")
 async def health() -> dict:
     settings = get_settings()
-    return {"status": "ok", "backend": settings.backend}
+    return {"status": "ok", "engine": settings.engine}
 
 
 @app.get("/")

@@ -207,16 +207,16 @@ def _is_cuda_library_error(exc: RuntimeError) -> bool:
 
 
 def create_asr_engine(settings: Settings) -> AsrEngine:
-    if settings.backend == "nemo":
+    if settings.engine == "nemo":
         return NemoAsrEngine(
-            model_name=settings.model_name,
-            model_path=settings.model_path,
+            model_name=settings.nemo_model_name,
+            model_path=settings.nemo_model_path,
             device=settings.device,
             target_lang=settings.target_lang,
-            strip_lang_tags=settings.strip_lang_tags,
+            strip_lang_tags=settings.nemo_strip_lang_tags,
         )
 
-    if settings.backend == "faster_whisper":
+    if settings.engine == "whisper":
         return FasterWhisperAsrEngine(
             model_name=settings.whisper_model,
             partial_model_name=settings.whisper_partial_model,
@@ -230,4 +230,4 @@ def create_asr_engine(settings: Settings) -> AsrEngine:
             condition_on_previous_text=settings.whisper_condition_on_previous_text,
         )
 
-    raise ValueError(f"unsupported ASR backend: {settings.backend}")
+    raise ValueError(f"unsupported ASR engine: {settings.engine}")
